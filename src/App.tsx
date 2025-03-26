@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { User } from '@supabase/supabase-js';
@@ -48,11 +48,11 @@ function App() {
               <div className="flex items-center space-x-4">
                 {!user ? (
                   <>
-                    <a href="/login" className="flex items-center text-gray-600 hover:text-blue-500">
+                    <a href="#/login" className="flex items-center text-gray-600 hover:text-blue-500">
                       <LogIn className="h-5 w-5 mr-1" />
                       Login
                     </a>
-                    <a href="/register" className="flex items-center text-gray-600 hover:text-blue-500">
+                    <a href="#/register" className="flex items-center text-gray-600 hover:text-blue-500">
                       <UserPlus className="h-5 w-5 mr-1" />
                       Register
                     </a>
