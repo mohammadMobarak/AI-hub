@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ChangeEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
-import { Plus, ExternalLink, Trash2, Edit } from 'lucide-react';
+import { Plus, ExternalLink, Trash2, Edit, Search, Upload } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface AICard {
   id: string;
@@ -9,6 +10,7 @@ interface AICard {
   description: string;
   link: string;
   user_id: string;
+  image_url?: string;
 }
 
 interface DashboardProps {
@@ -17,14 +19,24 @@ interface DashboardProps {
 
 export default function Dashboard({ user }: DashboardProps) {
   const [cards, setCards] = useState<AICard[]>([]);
+  const [filteredCards, setFilteredCards] = useState<AICard[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newCard, setNewCard] = useState({ title: '', description: '', link: '' });
+  const [newCard, setNewCard] = useState({ title: '', description: '', link: '', image_url: '' });
   const [editingCard, setEditingCard] = useState<AICard | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchCards();
   }, [user.id]);
+
+  useEffect(() => {
+    const filtered = cards.filter(card =>
+      card.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredCards(filtered);
+  }, [searchQuery, cards]);
 
   async function fetchCards() {
     const { data, error } = await supabase
@@ -37,8 +49,41 @@ export default function Dashboard({ user }: DashboardProps) {
       console.error('Error fetching cards:', error);
     } else {
       setCards(data || []);
+      setFilteredCards(data || []);
     }
     setLoading(false);
+  }
+
+  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!event.target.files || event.target.files.length === 0) {
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const file = event.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('card-images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage
+        .from('card-images')
+        .getPublicUrl(filePath);
+
+      setNewCard({ ...newCard, image_url: data.publicUrl });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -51,6 +96,7 @@ export default function Dashboard({ user }: DashboardProps) {
           title: newCard.title,
           description: newCard.description,
           link: newCard.link,
+          image_url: newCard.image_url,
         })
         .eq('id', editingCard.id);
 
@@ -66,6 +112,7 @@ export default function Dashboard({ user }: DashboardProps) {
             title: newCard.title,
             description: newCard.description,
             link: newCard.link,
+            image_url: newCard.image_url,
             user_id: user.id,
           },
         ]);
@@ -76,7 +123,7 @@ export default function Dashboard({ user }: DashboardProps) {
     }
 
     setShowAddModal(false);
-    setNewCard({ title: '', description: '', link: '' });
+    setNewCard({ title: '', description: '', link: '', image_url: '' });
   }
 
   async function handleDelete(id: string) {
@@ -96,6 +143,7 @@ export default function Dashboard({ user }: DashboardProps) {
       title: card.title,
       description: card.description,
       link: card.link,
+      image_url: card.image_url || '',
     });
     setShowAddModal(true);
   }
@@ -110,7 +158,7 @@ export default function Dashboard({ user }: DashboardProps) {
         <button
           onClick={() => {
             setEditingCard(null);
-            setNewCard({ title: '', description: '', link: '' });
+            setNewCard({ title: '', description: '', link: '', image_url: '' });
             setShowAddModal(true);
           }}
           className="flex items-center bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
@@ -120,19 +168,47 @@ export default function Dashboard({ user }: DashboardProps) {
         </button>
       </div>
 
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+          <input
+            type="text"
+            placeholder="Search AI tools..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
         </div>
-      ) : cards.length === 0 ? (
+      ) : filteredCards.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-600 text-lg">You haven't added any AI tools yet.</p>
-          <p className="text-gray-500 mt-2">Click the "Add New Tool" button to get started!</p>
+          {searchQuery ? (
+            <p className="text-gray-600 text-lg">No AI tools found matching "{searchQuery}"</p>
+          ) : (
+            <>
+              <p className="text-gray-600 text-lg">You haven't added any AI tools yet.</p>
+              <p className="text-gray-500 mt-2">Click the "Add New Tool" button to get started!</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {cards.map((card) => (
+          {filteredCards.map((card) => (
             <div key={card.id} className="bg-white rounded-lg shadow-md p-6">
+              {card.image_url && (
+                <div className="mb-4">
+                  <img
+                    src={card.image_url}
+                    alt={card.title}
+                    className="w-full h-40 object-cover rounded-md"
+                  />
+                </div>
+              )}
               <div className="flex justify-between items-start mb-4">
                 <h2 className="text-xl font-semibold text-gray-800">{card.title}</h2>
                 <div className="flex space-x-2">
@@ -196,7 +272,7 @@ export default function Dashboard({ user }: DashboardProps) {
                   required
                 />
               </div>
-              <div className="mb-6">
+              <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2">
                   Link
                 </label>
@@ -207,6 +283,31 @@ export default function Dashboard({ user }: DashboardProps) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
                 />
+              </div>
+              <div className="mb-6">
+                <label className="block text-gray-700 text-sm font-bold mb-2">
+                  Logo Image
+                </label>
+                <div className="flex items-center space-x-4">
+                  {newCard.image_url && (
+                    <img
+                      src={newCard.image_url}
+                      alt="Preview"
+                      className="h-16 w-16 object-cover rounded-md"
+                    />
+                  )}
+                  <label className="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md cursor-pointer hover:bg-gray-200">
+                    <Upload className="h-5 w-5 mr-2" />
+                    {uploading ? 'Uploading...' : 'Upload Image'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={uploading}
+                    />
+                  </label>
+                </div>
               </div>
               <div className="flex justify-end space-x-4">
                 <button
